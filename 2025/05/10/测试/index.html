@@ -5,7 +5,7 @@
   <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport" />
   <title>
     
-    test 丨
+    测试 丨
     
 
     ahQ&#39;s blog
@@ -54,7 +54,7 @@
   <main class="main">
     <article class="post">
   
-  <div class="post-title">test</div>
+  <div class="post-title">测试</div>
   <div class="post-meta">
     <div class="date">2025 May 10th</div>
     <div class="tags">
@@ -63,7 +63,22 @@
   </div>
   
 
-  <main class="post-content"></main>
+  <main class="post-content"><h1 id="h1"><a href="#h1" class="headerlink" title="h1"></a>h1</h1><pre><code class="highlight java"><span class="meta">@Override</span>
+<span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">doGet</span><span class="params">(HttpServletRequest request, HttpServletResponse response)</span>
+        <span class="keyword">throws</span> ServletException, IOException &#123;
+    response.setContentType(<span class="string">&quot;text/html;charset=UTF-8&quot;</span>);
+    javax.servlet.http.<span class="type">Cookie</span> <span class="variable">userCookie</span> <span class="operator">=</span>
+            <span class="keyword">new</span> <span class="title class_">javax</span>.servlet.http.Cookie(<span class="string">&quot;BenchmarkTest00077&quot;</span>, <span class="string">&quot;ECHOOO&quot;</span>);
+    userCookie.setMaxAge(<span class="number">60</span> * <span class="number">3</span>);
+    userCookie.setSecure(<span class="literal">true</span>);
+    userCookie.setPath(request.getRequestURI());
+    userCookie.setDomain(<span class="keyword">new</span> <span class="title class_">java</span>.net.URL(request.getRequestURL().toString()).getHost());
+    response.addCookie(userCookie);
+    javax.servlet.<span class="type">RequestDispatcher</span> <span class="variable">rd</span> <span class="operator">=</span>
+            request.getRequestDispatcher(<span class="string">&quot;/cmdi-00/BenchmarkTest00077.html&quot;</span>);
+    rd.include(request, response);
+&#125;</code></pre>
+<h2 id="h2"><a href="#h2" class="headerlink" title="h2"></a>h2</h2><h3 id="h3"><a href="#h3" class="headerlink" title="h3"></a>h3</h3></main>
 
 </article>
 
