@@ -38,17 +38,17 @@
   letter-spacing: 1px;
 }
 
-.post-content h1::before,
+/* .post-content h1::before,
 .post-content h2::before,
 .post-content h3::before,
 .post-content h4::before,
 .post-content h5::before,
 .post-content h6::before {
-  content: "⌗";
+  content: "";
   padding-right: 10px;
   color: var(--color-hashtag);
   font-weight: 600;
-}
+} */
 
 .post-content details {
   display: block;
